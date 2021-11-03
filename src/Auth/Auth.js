@@ -4,13 +4,14 @@ export default class Auth {
   constructor(history) {
     this.history = history;
     this.userProfile = null;
+    this.requestedScopes = "openid profile email read:courses";
     this.auth0 = new auth0.WebAuth({
       domain: process.env.REACT_APP_AUTH0_DOMAIN,
       clientID: process.env.REACT_APP_AUTH0_CLIENT_ID,
       redirectUri: process.env.REACT_APP_AUTH0_CALLBACK_URL,
       audience: process.env.REACT_APP_AUTH0_AUDIENCE,
       responseType: "token id_token",
-      scope: "openid profile email"
+      scope: this.requestedScopes
     })
   }
   login = () => this.auth0.authorize();
@@ -29,21 +30,29 @@ export default class Auth {
   };
 
   setSession = authResult => {
-    console.log(authResult);
+    console.log('setSession', authResult);
     // set the time that the access token will expire
     const expiresAt = JSON.stringify(
       authResult.expiresIn * 1000 + new Date().getTime()
     );
+    
+    // If there is a value on the `scope` param from the authResult,
+    // use it to set scopes in the session for the user. Otherwise
+    // use the scopes as requested. If no scopes were requested,
+    // set it to nothing
+    const scopes = authResult.scope || this.requestedScopes || "";
 
     localStorage.setItem("access_token", authResult.accessToken);
     localStorage.setItem("id_token", authResult.idToken);
     localStorage.setItem("expires_at", expiresAt);
+    localStorage.setItem("scopes", JSON.stringify(scopes)); // this is not security hole as server is checking this against token
   };
 
   logout = () => {
     localStorage.removeItem("access_token"); // soft logout
     localStorage.removeItem("id_token");
     localStorage.removeItem("expires_at");
+    localStorage.removeItem("scopes");
     this.userProfile = null;
     // this.history.push("/") // for soft logout
     this.auth0.logout({
@@ -72,4 +81,11 @@ export default class Auth {
       cb(profile, err);
     });
   };
+
+  userHasScopes(scopes) {
+    const grantedScopes = (
+      JSON.parse(localStorage.getItem("scopes")) || ""
+    ).split(" ");
+    return scopes.every(scope => grantedScopes.includes(scope));
+  }
 }
